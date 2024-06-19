@@ -4,23 +4,38 @@ on:
   pull_request:
   push:
     branches:
-      - master
       - main
 
 jobs:
-  build:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.3"
+          bundler-cache: true
+
+      - name: Rubocop
+        run: bundle exec rubocop
+
+      - name: syntax_tree
+        if: ${{ !cancelled() }}
+        run: |
+          set -E
+          bundle exec stree check Gemfile $(git ls-files '*.rb') $(git ls-files '*.rake')
+
+  test:
     runs-on: ubuntu-latest
 
     strategy:
       matrix:
-        ruby:
-          - 2.5
-          - 2.6
-          - 2.7
-          - 3.0
+        ruby: ["2.7", "3.0", "3.1", "3.2", "3.3"]
 
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
 
       - name: Setup ruby
         uses: ruby/setup-ruby@v1
@@ -28,22 +43,19 @@ jobs:
           ruby-version: ${{ matrix.ruby }}
           bundler-cache: true
 
-      - name: Lint
-        run: bundle exec rubocop
-
       - name: Tests
         run: bundle exec rake test
 
   publish:
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
-    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [lint, test]
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
 
       - name: Release Gem
-        uses: discourse/publish-rubygems-action@v2-beta
+        uses: discourse/publish-rubygems-action@v3
         env:
           RUBYGEMS_API_KEY: ${{ secrets.RUBYGEMS_API_KEY }}
           GIT_EMAIL: team@discourse.org
